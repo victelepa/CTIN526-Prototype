@@ -45,6 +45,9 @@ namespace RaceSabotage
         public bool JumpHeld => Resolve() && _jump.isPressed;
         public bool UseItemPressed => Resolve() && _item.wasPressedThisFrame;
         public bool InteractPressed => Resolve() && _interact.wasPressedThisFrame;
+        public bool ShopChoiceOnePressed => Resolve() && _left.wasPressedThisFrame;
+        public bool ShopChoiceTwoPressed => Resolve() && _item.wasPressedThisFrame;
+        public bool ShopChoiceThreePressed => Resolve() && _right.wasPressedThisFrame;
 
         bool Resolve()
         {

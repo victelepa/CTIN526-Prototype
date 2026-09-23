@@ -3,19 +3,16 @@ using UnityEngine;
 namespace RaceSabotage
 {
     /// <summary>
-    /// Day 3 debug loadout: every item is unlimited, gated only by its own cooldown,
-    /// so a first playtest can test whether sabotage itself is fun before a shop or
-    /// coin economy exists to gate it. The eventual shop model only ever hands a
-    /// player one held item at a time, so "cycle with one key, cast with another"
-    /// is not a placeholder input scheme - it is the real one, just with every item
-    /// unlocked instead of one bought item.
-    /// Reuses the two keys already reserved for the racing phase (design doc §7.2):
-    /// Interact cycles the selected item (idle otherwise, since there is no shop
-    /// yet), Use Item casts it.
+    /// Holds and casts the player's current item. Normal play receives one consumable
+    /// item from a shop; the old unlimited/cycling mode remains as an Inspector debug
+    /// option for focused item testing.
     /// </summary>
     public class PlayerLoadout : MonoBehaviour
     {
         static readonly ItemKind[] Order = { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+
+        [Header("Mode")]
+        [SerializeField] bool debugUnlimitedItems;
 
         [Header("Cooldowns (seconds)")]
         [Tooltip("Swap is the most decisive item on the list (design doc §4.1), so it gets the longest cooldown.")]
@@ -68,9 +65,26 @@ namespace RaceSabotage
 
         readonly float[] _cooldownRemaining = new float[Order.Length];
         int _selected;
+        ItemKind _heldItem;
+        bool _hasHeldItem;
+        bool _shopOpen;
+        int _resumeInputAfterFrame = -1;
 
-        public ItemKind Selected => Order[_selected];
+        public bool HasItem => debugUnlimitedItems || _hasHeldItem;
+        public ItemKind Selected => debugUnlimitedItems ? Order[_selected] : _heldItem;
         public float CooldownRemaining(ItemKind kind) => Mathf.Max(0f, _cooldownRemaining[(int)kind]);
+
+        public void Purchase(ItemKind kind)
+        {
+            _heldItem = kind;
+            _hasHeldItem = true;
+        }
+
+        public void SetShopping(bool shopping)
+        {
+            _shopOpen = shopping;
+            if (!shopping) _resumeInputAfterFrame = Time.frameCount + 1;
+        }
 
         public void Configure(PlayerSlot slot, PlayerMotor motor, PlayerInputReader input, CameraShake ownShake,
             ItemBanner banner, PlayerMotor opponentMotor, Transform opponentTrackRoot, CameraShake opponentShake,
@@ -101,25 +115,33 @@ namespace RaceSabotage
             }
 
             if (_input == null) return;
+            if (_shopOpen || Time.frameCount <= _resumeInputAfterFrame) return;
 
-            if (_input.InteractPressed) _selected = (_selected + 1) % Order.Length;
+            if (debugUnlimitedItems && _input.InteractPressed) _selected = (_selected + 1) % Order.Length;
             if (_input.UseItemPressed) TryCast();
         }
 
-        void TryCast()
+        bool TryCast()
         {
-            ItemKind kind = Order[_selected];
-            if (CooldownRemaining(kind) > 0f) return;
+            if (!HasItem) return false;
 
-            switch (kind)
+            ItemKind kind = Selected;
+            if (CooldownRemaining(kind) > 0f) return false;
+
+            bool cast = kind switch
             {
-                case ItemKind.Swap: CastSwap(); break;
-                case ItemKind.Nitro: CastNitro(); break;
-                case ItemKind.Mine: CastMine(); break;
-                case ItemKind.Blind: CastBlind(); break;
-            }
+                ItemKind.Swap => CastSwap(),
+                ItemKind.Nitro => CastNitro(),
+                ItemKind.Mine => CastMine(),
+                ItemKind.Blind => CastBlind(),
+                _ => false
+            };
+
+            if (!cast) return false;
 
             _cooldownRemaining[(int)kind] = CooldownFor(kind);
+            if (!debugUnlimitedItems) _hasHeldItem = false;
+            return true;
         }
 
         float CooldownFor(ItemKind kind) => kind switch
@@ -131,7 +153,7 @@ namespace RaceSabotage
             _ => 1f
         };
 
-        void CastSwap()
+        bool CastSwap()
         {
             float myX = _motor.transform.position.x;
             float theirX = _opponentTransform.position.x;
@@ -147,20 +169,22 @@ namespace RaceSabotage
 
             _banner?.Show(_slot, "SWAPPED!");
             _banner?.Show(Opposite(_slot), "SWAPPED!");
+            return true;
         }
 
-        void CastNitro()
+        bool CastNitro()
         {
             _motor.ApplyBoost(nitroMultiplier, nitroDuration);
             _banner?.Show(_slot, "NITRO!");
+            return true;
         }
 
-        void CastMine()
+        bool CastMine()
         {
             float spawnX = Mathf.Min(
                 _opponentTransform.position.x + mineLeadDistance,
                 _trackFinishX - mineFinishMargin);
-            if (spawnX <= _opponentTransform.position.x) return; // too close to the finish to be fair
+            if (spawnX <= _opponentTransform.position.x) return false; // too close to the finish to be fair
 
             SpriteRenderer box = PrimitiveSprite.CreateBox($"Mine_{_slot}_{Time.frameCount}", _opponentTrackRoot,
                 new Vector2(spawnX, _opponentTrackBaselineY + mineSize.y * 0.5f), mineSize,
@@ -168,13 +192,17 @@ namespace RaceSabotage
             box.gameObject.AddComponent<Mine>().Configure(mineSpeedMultiplier, mineSlowDuration);
 
             _banner?.Show(_slot, "MINE PLACED");
+            return true;
         }
 
-        void CastBlind()
+        bool CastBlind()
         {
+            if (_opponentFlash == null) return false;
+
             _opponentFlash?.Blind(blindColor, blindStrength, blindDuration);
             _banner?.Show(_slot, "BLIND SENT");
             _banner?.Show(Opposite(_slot), "BLINDED!");
+            return true;
         }
 
         static PlayerSlot Opposite(PlayerSlot slot) => slot == PlayerSlot.One ? PlayerSlot.Two : PlayerSlot.One;

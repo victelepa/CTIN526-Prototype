@@ -19,6 +19,7 @@ namespace RaceSabotage
         {
             public string Text;
             public float Remaining;
+            public string PersistentText;
         }
 
         readonly Message _top = new Message();
@@ -28,10 +29,28 @@ namespace RaceSabotage
 
         public void Show(PlayerSlot slot, string text)
         {
-            Message message = slot == PlayerSlot.One ? _top : _bottom;
+            Message message = For(slot);
             message.Text = text;
             message.Remaining = displayDuration;
         }
+
+        /// <summary>
+        /// Sets a fallback message that remains until explicitly cleared. Timed
+        /// messages can temporarily appear over it, then the persistent message
+        /// resumes for as long as the owning interaction remains available.
+        /// </summary>
+        public void ShowPersistent(PlayerSlot slot, string text)
+        {
+            For(slot).PersistentText = text;
+        }
+
+        public void ClearPersistent(PlayerSlot slot, string text)
+        {
+            Message message = For(slot);
+            if (message.PersistentText == text) message.PersistentText = null;
+        }
+
+        Message For(PlayerSlot slot) => slot == PlayerSlot.One ? _top : _bottom;
 
         void OnGUI()
         {
@@ -50,14 +69,17 @@ namespace RaceSabotage
 
         void Draw(Message message, Rect area)
         {
-            if (message.Remaining <= 0f) return;
+            bool timed = message.Remaining > 0f;
+            if (!timed && string.IsNullOrEmpty(message.PersistentText)) return;
 
-            message.Remaining -= Time.unscaledDeltaTime;
+            if (timed) message.Remaining -= Time.unscaledDeltaTime;
 
-            float alpha = Mathf.Clamp01(message.Remaining / (displayDuration * 0.4f));
+            float alpha = timed
+                ? Mathf.Clamp01(message.Remaining / (displayDuration * 0.4f))
+                : 1f;
             Color previous = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, alpha);
-            GUI.Label(area, message.Text, _style);
+            GUI.Label(area, timed ? message.Text : message.PersistentText, _style);
             GUI.color = previous;
         }
     }

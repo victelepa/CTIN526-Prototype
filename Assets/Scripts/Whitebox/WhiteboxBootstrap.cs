@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
 
@@ -27,9 +28,20 @@ namespace RaceSabotage.Whitebox
         [SerializeField, Range(0f, 1f)] float obstacleSpeedMultiplier = 0.4f;
         [SerializeField] float obstacleSlowDuration = 1.5f;
 
+        [Header("Shops")]
+        [Tooltip("Both tracks use the same offers at matching shop indices.")]
+        [SerializeField] float[] shopPositions = { 47f, 119f, 191f };
+        [SerializeField] Vector2 shopTriggerSize = new Vector2(5f, 4f);
+
         [Header("Player")]
         [SerializeField] Vector2 playerSize = new Vector2(1f, 1f);
         [SerializeField] float startX = 4f;
+
+        [Header("Preparation Room")]
+        [SerializeField] float preparationDuration = 12f;
+        [SerializeField] Vector2 roomCenter = new Vector2(-12f, 12f);
+        [SerializeField] Vector2 roomSize = new Vector2(18f, 10f);
+        [SerializeField] float sharedCameraOrthographicSize = 6f;
 
         [Header("Camera")]
         [SerializeField] float orthographicSize = 3f;
@@ -46,6 +58,9 @@ namespace RaceSabotage.Whitebox
         static readonly Color GroundColor = new Color(0.22f, 0.24f, 0.28f);
         static readonly Color ObstacleColor = new Color(0.85f, 0.31f, 0.28f);
         static readonly Color FinishColor = new Color(0.95f, 0.85f, 0.35f);
+        static readonly Color ShopColor = new Color(0.22f, 0.82f, 0.72f, 0.22f);
+        static readonly Color RoomColor = new Color(0.24f, 0.27f, 0.33f);
+        static readonly Color CoinColor = new Color(1f, 0.78f, 0.15f);
         static readonly Color GuideColor = new Color(1f, 1f, 1f, 0.08f);
         static readonly Color PlayerOneColor = new Color(0.36f, 0.68f, 0.96f);
         static readonly Color PlayerTwoColor = new Color(0.98f, 0.62f, 0.31f);
@@ -66,21 +81,28 @@ namespace RaceSabotage.Whitebox
             public PlayerMotor Motor;
             public PlayerInputReader Input;
             public PlayerHitFeedback Feedback;
+            public PlayerWallet Wallet;
             public PlayerLoadout Loadout;
             public Camera Camera;
             public FollowCamera Follow;
             public CameraShake Shake;
             public ViewportFlash Flash;
             public RaceProgressBar Bar;
+            public readonly List<TrackShop> Shops = new List<TrackShop>();
         }
 
         Side _one;
         Side _two;
         WhiteboxHud _hud;
+        ItemKind[][] _shopOffers;
+        readonly List<CoinPickup> _coins = new List<CoinPickup>();
+        Vector2 _oneRoomSpawn;
+        Vector2 _twoRoomSpawn;
 
         void Awake()
         {
             _hud = showDebugHud ? gameObject.AddComponent<WhiteboxHud>() : null;
+            BuildShopOffers();
 
             _one = new Side
             {
@@ -94,8 +116,10 @@ namespace RaceSabotage.Whitebox
 
             BuildTrack(_one);
             BuildTrack(_two);
+            BuildRoom();
             BuildCamera(_one);
             BuildCamera(_two);
+            Camera sharedCamera = BuildSharedCamera();
             BuildProgressBar(_one, _two);
             BuildProgressBar(_two, _one);
 
@@ -107,14 +131,20 @@ namespace RaceSabotage.Whitebox
             BuildLoadout(_two, _one, banner);
 
             SplitScreenManager splitScreen = gameObject.AddComponent<SplitScreenManager>();
+            splitScreen.SharedCamera = sharedCamera;
             splitScreen.PlayerOneCamera = _one.Camera;
             splitScreen.PlayerTwoCamera = _two.Camera;
             splitScreen.Apply();
 
+            GameFlow flow = gameObject.AddComponent<GameFlow>();
+            flow.Configure(_one.Motor, _one.Wallet, _oneRoomSpawn, new Vector2(startX, _one.RestY),
+                _two.Motor, _two.Wallet, _twoRoomSpawn, new Vector2(startX, _two.RestY),
+                splitScreen, _coins, preparationDuration);
+
             if (_hud != null)
             {
-                _hud.Register("P1", _one.Motor, _one.Loadout);
-                _hud.Register("P2", _two.Motor, _two.Loadout);
+                _hud.Register("P1", _one.Motor, _one.Loadout, _one.Wallet);
+                _hud.Register("P2", _two.Motor, _two.Loadout, _two.Wallet);
                 _hud.Configure(startX, trackLength, _one.Camera);
             }
         }
@@ -148,8 +178,119 @@ namespace RaceSabotage.Whitebox
             }
 
             BuildObstacles(root.transform, trackY);
+            BuildShops(side, root.transform, trackY);
             BuildFinishLine(root.transform, trackY);
             BuildPlayer(side, root.transform);
+        }
+
+        void BuildShopOffers()
+        {
+            int count = shopPositions?.Length ?? 0;
+            _shopOffers = new ItemKind[count][];
+
+            for (int shopIndex = 0; shopIndex < count; shopIndex++)
+            {
+                bool finalShop = shopIndex == count - 1;
+                var pool = finalShop
+                    ? new List<ItemKind> { ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind }
+                    : new List<ItemKind> { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+
+                for (int i = pool.Count - 1; i > 0; i--)
+                {
+                    int swapIndex = Random.Range(0, i + 1);
+                    (pool[i], pool[swapIndex]) = (pool[swapIndex], pool[i]);
+                }
+
+                _shopOffers[shopIndex] = pool.GetRange(0, 3).ToArray();
+            }
+        }
+
+        void BuildShops(Side side, Transform root, float trackY)
+        {
+            if (shopPositions == null) return;
+
+            for (int i = 0; i < shopPositions.Length; i++)
+            {
+                float x = shopPositions[i];
+                if (x <= startX || x >= trackLength) continue;
+
+                SpriteRenderer box = PrimitiveSprite.CreateBox($"Shop_{i + 1}", root,
+                    new Vector2(x, trackY + shopTriggerSize.y * 0.5f), shopTriggerSize,
+                    ShopColor, PrimitiveSprite.ColliderKind.Trigger, 2);
+
+                TrackShop shop = box.gameObject.AddComponent<TrackShop>();
+                shop.OfferIndex = i;
+                side.Shops.Add(shop);
+            }
+        }
+
+        void BuildRoom()
+        {
+            var root = new GameObject("Room");
+            float floorY = roomCenter.y - roomSize.y * 0.5f;
+            float left = roomCenter.x - roomSize.x * 0.5f;
+            float right = roomCenter.x + roomSize.x * 0.5f;
+
+            PrimitiveSprite.CreateBox("Floor", root.transform,
+                new Vector2(roomCenter.x, floorY - 0.75f), new Vector2(roomSize.x, 1.5f),
+                RoomColor, PrimitiveSprite.ColliderKind.Solid, -2);
+            PrimitiveSprite.CreateBox("LeftWall", root.transform,
+                new Vector2(left - 0.5f, roomCenter.y), new Vector2(1f, roomSize.y),
+                RoomColor, PrimitiveSprite.ColliderKind.Solid, -2);
+            PrimitiveSprite.CreateBox("RightWall", root.transform,
+                new Vector2(right + 0.5f, roomCenter.y), new Vector2(1f, roomSize.y),
+                RoomColor, PrimitiveSprite.ColliderKind.Solid, -2);
+
+            float leftPlatformY = floorY + 1.35f;
+            float rightPlatformY = floorY + 1.75f;
+            PrimitiveSprite.CreateBox("PlatformLeft", root.transform,
+                new Vector2(roomCenter.x - 4.2f, leftPlatformY), new Vector2(4.2f, 0.4f),
+                RoomColor, PrimitiveSprite.ColliderKind.Solid, -1);
+            PrimitiveSprite.CreateBox("PlatformRight", root.transform,
+                new Vector2(roomCenter.x + 4.2f, rightPlatformY), new Vector2(4.2f, 0.4f),
+                RoomColor, PrimitiveSprite.ColliderKind.Solid, -1);
+
+            _oneRoomSpawn = new Vector2(roomCenter.x - 3f, floorY + playerSize.y * 0.5f + 0.05f);
+            _twoRoomSpawn = new Vector2(roomCenter.x + 3f, floorY + playerSize.y * 0.5f + 0.05f);
+
+            float[] floorOffsets = { -7f, -4.5f, 0f, 4.5f, 7f };
+            foreach (float offset in floorOffsets)
+                BuildCoin(root.transform, new Vector2(roomCenter.x + offset, floorY + 0.45f));
+
+            for (int i = -1; i <= 1; i++)
+            {
+                BuildCoin(root.transform,
+                    new Vector2(roomCenter.x - 4.2f + i * 1.2f, leftPlatformY + 0.65f));
+                BuildCoin(root.transform,
+                    new Vector2(roomCenter.x + 4.2f + i * 1.2f, rightPlatformY + 0.65f));
+            }
+
+            BuildCoin(root.transform, new Vector2(roomCenter.x, floorY + 2f));
+        }
+
+        void BuildCoin(Transform root, Vector2 position)
+        {
+            SpriteRenderer box = PrimitiveSprite.CreateBox($"Coin_{_coins.Count + 1}", root,
+                position, new Vector2(0.45f, 0.45f), CoinColor,
+                PrimitiveSprite.ColliderKind.Trigger, 3);
+            _coins.Add(box.gameObject.AddComponent<CoinPickup>());
+        }
+
+        Camera BuildSharedCamera()
+        {
+            var cameraObject = new GameObject("Cam_Shared");
+            cameraObject.transform.position = new Vector3(roomCenter.x, roomCenter.y, -10f);
+
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.orthographic = true;
+            camera.orthographicSize = sharedCameraOrthographicSize;
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.1f, 0.13f, 0.18f);
+            camera.nearClipPlane = 0.01f;
+            camera.farClipPlane = 100f;
+            camera.depth = 2f;
+            cameraObject.AddComponent<UniversalAdditionalCameraData>();
+            return camera;
         }
 
         void BuildObstacles(Transform root, float trackY)
@@ -199,6 +340,7 @@ namespace RaceSabotage.Whitebox
             body.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
 
             player.AddComponent<PlayerTime>();
+            side.Wallet = player.AddComponent<PlayerWallet>();
             PlayerInputReader input = player.AddComponent<PlayerInputReader>();
             input.Slot = side.Slot;
 
@@ -220,6 +362,12 @@ namespace RaceSabotage.Whitebox
                 opponent.Motor, opponent.TrackRoot, opponent.Shake, opponent.Flash,
                 side.RestY, opponent.RestY, opponent.TrackY, trackLength);
             side.Loadout = loadout;
+
+            foreach (TrackShop shop in side.Shops)
+            {
+                shop.Configure(side.Slot, side.Motor, side.Input, loadout, side.Wallet, banner, side.Camera,
+                    _shopOffers[shop.OfferIndex]);
+            }
         }
 
         void BuildCamera(Side side)

@@ -16,6 +16,7 @@ namespace RaceSabotage.Whitebox
             public string Label;
             public PlayerMotor Motor;
             public PlayerLoadout Loadout;
+            public PlayerWallet Wallet;
             public float FinishTime = -1f;
         }
 
@@ -36,9 +37,9 @@ namespace RaceSabotage.Whitebox
             _raceStartTime = Time.time;
         }
 
-        public void Register(string label, PlayerMotor motor, PlayerLoadout loadout = null)
+        public void Register(string label, PlayerMotor motor, PlayerLoadout loadout = null, PlayerWallet wallet = null)
         {
-            _entries.Add(new Entry { Label = label, Motor = motor, Loadout = loadout });
+            _entries.Add(new Entry { Label = label, Motor = motor, Loadout = loadout, Wallet = wallet });
         }
 
         public void ReportFinish(PlayerMotor motor)
@@ -71,12 +72,15 @@ namespace RaceSabotage.Whitebox
                 float span = Mathf.Max(0.001f, _finishX - _startX);
                 float progress = Mathf.Clamp01((entry.Motor.transform.position.x - _startX) / span);
                 string finish = entry.FinishTime >= 0f ? $"   FINISHED {entry.FinishTime:0.00}s" : string.Empty;
-                string item = entry.Loadout != null
-                    ? $"   item:{entry.Loadout.Selected}{ReadyTag(entry.Loadout)}"
-                    : string.Empty;
+                string item = entry.Loadout == null
+                    ? string.Empty
+                    : entry.Loadout.HasItem
+                        ? $"   item:{entry.Loadout.Selected}{ReadyTag(entry.Loadout)}"
+                        : "   item:Empty";
+                string coins = entry.Wallet != null ? $"   coins:{entry.Wallet.Coins}" : string.Empty;
 
                 GUILayout.Label(
-                    $"{entry.Label}   {progress * 100f:00.0}%   speed x{entry.Motor.SpeedMultiplier:0.00}{finish}{item}",
+                    $"{entry.Label}   {progress * 100f:00.0}%   speed x{entry.Motor.SpeedMultiplier:0.00}{finish}{coins}{item}",
                     _style);
             }
 
