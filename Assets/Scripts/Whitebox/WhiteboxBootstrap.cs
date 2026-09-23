@@ -217,7 +217,7 @@ namespace RaceSabotage.Whitebox
         {
             PlayerLoadout loadout = side.Player.gameObject.AddComponent<PlayerLoadout>();
             loadout.Configure(side.Slot, side.Motor, side.Input, side.Shake, banner,
-                opponent.Motor, opponent.TrackRoot, opponent.Shake,
+                opponent.Motor, opponent.TrackRoot, opponent.Shake, opponent.Flash,
                 side.RestY, opponent.RestY, opponent.TrackY, trackLength);
             side.Loadout = loadout;
         }

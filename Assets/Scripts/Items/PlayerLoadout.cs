@@ -15,13 +15,14 @@ namespace RaceSabotage
     /// </summary>
     public class PlayerLoadout : MonoBehaviour
     {
-        static readonly ItemKind[] Order = { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine };
+        static readonly ItemKind[] Order = { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
 
         [Header("Cooldowns (seconds)")]
         [Tooltip("Swap is the most decisive item on the list (design doc §4.1), so it gets the longest cooldown.")]
         [SerializeField] float swapCooldown = 6f;
         [SerializeField] float nitroCooldown = 4f;
         [SerializeField] float mineCooldown = 5f;
+        [SerializeField] float blindCooldown = 7f;
 
         [Header("Swap")]
         [Tooltip("Landing grace so a swap can't drop you straight into an obstacle's penalty on arrival.")]
@@ -41,6 +42,11 @@ namespace RaceSabotage
         [Tooltip("Keeps a mine from spawning so close to the finish it becomes unavoidable.")]
         [SerializeField] float mineFinishMargin = 6f;
 
+        [Header("Blind")]
+        [SerializeField] float blindDuration = 2f;
+        [SerializeField, Range(0f, 1f)] float blindStrength = 0.9f;
+        [SerializeField] Color blindColor = new Color(0.015f, 0.02f, 0.035f);
+
         static readonly Color MineColor = new Color(0.64f, 0.27f, 0.86f);
 
         PlayerSlot _slot;
@@ -52,6 +58,7 @@ namespace RaceSabotage
         PlayerMotor _opponentMotor;
         Transform _opponentTransform;
         CameraShake _opponentShake;
+        ViewportFlash _opponentFlash;
         Transform _opponentTrackRoot;
 
         float _ownRestY;
@@ -59,7 +66,7 @@ namespace RaceSabotage
         float _opponentTrackBaselineY;
         float _trackFinishX;
 
-        readonly float[] _cooldownRemaining = new float[3];
+        readonly float[] _cooldownRemaining = new float[Order.Length];
         int _selected;
 
         public ItemKind Selected => Order[_selected];
@@ -67,7 +74,8 @@ namespace RaceSabotage
 
         public void Configure(PlayerSlot slot, PlayerMotor motor, PlayerInputReader input, CameraShake ownShake,
             ItemBanner banner, PlayerMotor opponentMotor, Transform opponentTrackRoot, CameraShake opponentShake,
-            float ownRestY, float opponentRestY, float opponentTrackBaselineY, float trackFinishX)
+            ViewportFlash opponentFlash, float ownRestY, float opponentRestY,
+            float opponentTrackBaselineY, float trackFinishX)
         {
             _slot = slot;
             _motor = motor;
@@ -78,6 +86,7 @@ namespace RaceSabotage
             _opponentTransform = opponentMotor.transform;
             _opponentTrackRoot = opponentTrackRoot;
             _opponentShake = opponentShake;
+            _opponentFlash = opponentFlash;
             _ownRestY = ownRestY;
             _opponentRestY = opponentRestY;
             _opponentTrackBaselineY = opponentTrackBaselineY;
@@ -107,6 +116,7 @@ namespace RaceSabotage
                 case ItemKind.Swap: CastSwap(); break;
                 case ItemKind.Nitro: CastNitro(); break;
                 case ItemKind.Mine: CastMine(); break;
+                case ItemKind.Blind: CastBlind(); break;
             }
 
             _cooldownRemaining[(int)kind] = CooldownFor(kind);
@@ -117,6 +127,7 @@ namespace RaceSabotage
             ItemKind.Swap => swapCooldown,
             ItemKind.Nitro => nitroCooldown,
             ItemKind.Mine => mineCooldown,
+            ItemKind.Blind => blindCooldown,
             _ => 1f
         };
 
@@ -157,6 +168,13 @@ namespace RaceSabotage
             box.gameObject.AddComponent<Mine>().Configure(mineSpeedMultiplier, mineSlowDuration);
 
             _banner?.Show(_slot, "MINE PLACED");
+        }
+
+        void CastBlind()
+        {
+            _opponentFlash?.Blind(blindColor, blindStrength, blindDuration);
+            _banner?.Show(_slot, "BLIND SENT");
+            _banner?.Show(Opposite(_slot), "BLINDED!");
         }
 
         static PlayerSlot Opposite(PlayerSlot slot) => slot == PlayerSlot.One ? PlayerSlot.Two : PlayerSlot.One;

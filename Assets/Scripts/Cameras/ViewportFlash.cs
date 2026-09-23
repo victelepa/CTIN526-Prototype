@@ -10,12 +10,17 @@ namespace RaceSabotage
     public class ViewportFlash : MonoBehaviour
     {
         [SerializeField] float fadeDuration = 0.35f;
+        [SerializeField] float blindFadeDuration = 0.25f;
 
         Camera _camera;
         SpriteRenderer _renderer;
-        Color _tint = Color.white;
-        float _strength;
-        float _remaining;
+        Color _flashTint = Color.white;
+        float _flashStrength;
+        float _flashRemaining;
+
+        Color _blindTint = Color.black;
+        float _blindStrength;
+        float _blindRemaining;
 
         void Awake()
         {
@@ -26,9 +31,21 @@ namespace RaceSabotage
 
         public void Flash(Color color, float strength)
         {
-            _tint = color;
-            _strength = strength;
-            _remaining = fadeDuration;
+            _flashTint = color;
+            _flashStrength = strength;
+            _flashRemaining = fadeDuration;
+        }
+
+        /// <summary>
+        /// Obscures this camera's viewport without affecting the opponent's half of
+        /// the split screen. A hit flash may briefly take visual priority, after which
+        /// the remaining blind resumes instead of being cancelled.
+        /// </summary>
+        public void Blind(Color color, float strength, float duration)
+        {
+            _blindTint = color;
+            _blindStrength = Mathf.Clamp01(strength);
+            _blindRemaining = Mathf.Max(_blindRemaining, duration);
         }
 
         void LateUpdate()
@@ -39,16 +56,39 @@ namespace RaceSabotage
                 transform.localScale = new Vector3(height * _camera.aspect, height, 1f);
             }
 
-            if (_remaining <= 0f) return;
+            _flashRemaining -= Time.unscaledDeltaTime;
+            _blindRemaining -= Time.unscaledDeltaTime;
 
-            _remaining -= Time.unscaledDeltaTime;
-            SetAlpha(Mathf.Max(0f, _remaining / fadeDuration) * _strength);
+            if (_flashRemaining > 0f)
+            {
+                SetTint(_flashTint, Mathf.Clamp01(_flashRemaining / fadeDuration) * _flashStrength);
+                return;
+            }
+
+            if (_blindRemaining > 0f)
+            {
+                float fade = blindFadeDuration <= 0f
+                    ? 1f
+                    : Mathf.Clamp01(_blindRemaining / blindFadeDuration);
+                SetTint(_blindTint, fade * _blindStrength);
+                return;
+            }
+
+            SetAlpha(0f);
+        }
+
+        void SetTint(Color tint, float alpha)
+        {
+            if (_renderer == null) return;
+            _renderer.color = new Color(tint.r, tint.g, tint.b, alpha);
         }
 
         void SetAlpha(float alpha)
         {
             if (_renderer == null) return;
-            _renderer.color = new Color(_tint.r, _tint.g, _tint.b, alpha);
+            Color color = _renderer.color;
+            color.a = alpha;
+            _renderer.color = color;
         }
     }
 }
