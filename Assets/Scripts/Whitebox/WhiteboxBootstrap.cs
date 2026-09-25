@@ -33,6 +33,13 @@ namespace RaceSabotage.Whitebox
         [SerializeField] float[] shopPositions = { 47f, 119f, 191f };
         [SerializeField] Vector2 shopTriggerSize = new Vector2(5f, 4f);
 
+        [Header("Racing Item Choice")]
+        [Tooltip("X position of the first free item. The other two follow at the configured spacing.")]
+        [SerializeField] float itemChoiceStartX = 80f;
+        [SerializeField] float itemChoiceSpacing = 3.2f;
+        [SerializeField] float itemChoiceHeight = 2f;
+        [SerializeField] Vector2 itemChoiceTriggerSize = new Vector2(1.7f, 0.65f);
+
         [Header("Player")]
         [SerializeField] Vector2 playerSize = new Vector2(1f, 1f);
         [SerializeField] float startX = 4f;
@@ -95,6 +102,7 @@ namespace RaceSabotage.Whitebox
         Side _two;
         WhiteboxHud _hud;
         ItemKind[][] _shopOffers;
+        ItemKind[] _racingItemOffers;
         readonly List<CoinPickup> _coins = new List<CoinPickup>();
         Vector2 _oneRoomSpawn;
         Vector2 _twoRoomSpawn;
@@ -103,6 +111,7 @@ namespace RaceSabotage.Whitebox
         {
             _hud = showDebugHud ? gameObject.AddComponent<WhiteboxHud>() : null;
             BuildShopOffers();
+            BuildRacingItemOffers();
 
             _one = new Side
             {
@@ -129,6 +138,8 @@ namespace RaceSabotage.Whitebox
             ItemBanner banner = gameObject.AddComponent<ItemBanner>();
             BuildLoadout(_one, _two, banner);
             BuildLoadout(_two, _one, banner);
+            BuildRacingItemChoice(_one, banner);
+            BuildRacingItemChoice(_two, banner);
 
             SplitScreenManager splitScreen = gameObject.AddComponent<SplitScreenManager>();
             splitScreen.SharedCamera = sharedCamera;
@@ -202,6 +213,47 @@ namespace RaceSabotage.Whitebox
                 }
 
                 _shopOffers[shopIndex] = pool.GetRange(0, 3).ToArray();
+            }
+        }
+
+        void BuildRacingItemOffers()
+        {
+            var pool = new List<ItemKind> { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+            for (int i = pool.Count - 1; i > 0; i--)
+            {
+                int swapIndex = Random.Range(0, i + 1);
+                (pool[i], pool[swapIndex]) = (pool[swapIndex], pool[i]);
+            }
+
+            _racingItemOffers = pool.GetRange(0, 3).ToArray();
+        }
+
+        void BuildRacingItemChoice(Side side, ItemBanner banner)
+        {
+            if (_racingItemOffers == null || _racingItemOffers.Length < 3) return;
+
+            float lastX = itemChoiceStartX + itemChoiceSpacing * (_racingItemOffers.Length - 1);
+            if (itemChoiceStartX <= startX || lastX >= trackLength) return;
+
+            var choiceRoot = new GameObject("RacingItemChoice");
+            choiceRoot.transform.SetParent(side.TrackRoot, false);
+
+            for (int i = 0; i < _racingItemOffers.Length; i++)
+            {
+                ItemKind item = _racingItemOffers[i];
+                var pickupObject = new GameObject($"FreeItem_{i + 1}_{item}");
+                pickupObject.transform.SetParent(choiceRoot.transform, false);
+                pickupObject.transform.localPosition = new Vector3(
+                    itemChoiceStartX + i * itemChoiceSpacing,
+                    side.TrackY + itemChoiceHeight,
+                    0f);
+
+                BoxCollider2D trigger = pickupObject.AddComponent<BoxCollider2D>();
+                trigger.size = itemChoiceTriggerSize;
+                trigger.isTrigger = true;
+
+                RaceItemPickup pickup = pickupObject.AddComponent<RaceItemPickup>();
+                pickup.Configure(side.Slot, side.Motor, side.Loadout, banner, side.Camera, item, choiceRoot);
             }
         }
 

@@ -109,6 +109,12 @@ namespace RaceSabotage
         {
             ItemKind item = _offers[index];
             int price = PriceFor(item);
+            if (_loadout == null || !_loadout.CanAddItem)
+            {
+                _banner?.Show(_slot, "INVENTORY FULL");
+                return;
+            }
+
             if (_wallet == null || !_wallet.TrySpend(price))
             {
                 _banner?.Show(_slot, $"NEED {price} COINS");

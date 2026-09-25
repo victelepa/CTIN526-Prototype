@@ -27,8 +27,8 @@ namespace RaceSabotage
         [SerializeField] MotorMode mode = MotorMode.AutoRun;
 
         [Header("Speed (world units per second)")]
-        [SerializeField] float runSpeed = 6f;
-        [SerializeField] float manualSpeed = 6f;
+        [SerializeField] float runSpeed = 8f;
+        [SerializeField] float manualSpeed = 8f;
         [Tooltip("Floor on the combined speed multiplier. Slows stack multiplicatively, so two " +
                  "overlapping 0.4x hits would otherwise leave you at 0.16x and unable to catch up.")]
         [SerializeField, Range(0.05f, 1f)] float minSpeedMultiplier = 0.35f;

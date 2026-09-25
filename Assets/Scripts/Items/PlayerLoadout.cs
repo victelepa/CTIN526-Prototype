@@ -1,15 +1,17 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace RaceSabotage
 {
     /// <summary>
-    /// Holds and casts the player's current item. Normal play receives one consumable
-    /// item from a shop; the old unlimited/cycling mode remains as an Inspector debug
+    /// Holds and casts up to three consumable items. Normal play cycles through the
+    /// inventory during the race; the unlimited mode remains as an Inspector debug
     /// option for focused item testing.
     /// </summary>
     public class PlayerLoadout : MonoBehaviour
     {
         static readonly ItemKind[] Order = { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+        const int MaxInventorySize = 3;
 
         [Header("Mode")]
         [SerializeField] bool debugUnlimitedItems;
@@ -64,20 +66,52 @@ namespace RaceSabotage
         float _trackFinishX;
 
         readonly float[] _cooldownRemaining = new float[Order.Length];
+        readonly List<ItemKind> _inventory = new List<ItemKind>(MaxInventorySize);
         int _selected;
-        ItemKind _heldItem;
-        bool _hasHeldItem;
         bool _shopOpen;
         int _resumeInputAfterFrame = -1;
 
-        public bool HasItem => debugUnlimitedItems || _hasHeldItem;
-        public ItemKind Selected => debugUnlimitedItems ? Order[_selected] : _heldItem;
+        public bool HasItem => debugUnlimitedItems || _inventory.Count > 0;
+        public bool CanAddItem => debugUnlimitedItems || _inventory.Count < MaxInventorySize;
+        public int InventoryCapacity => debugUnlimitedItems ? Order.Length : MaxInventorySize;
+        public int ItemCount => debugUnlimitedItems ? Order.Length : _inventory.Count;
+        public int SelectedIndex => _selected;
+        public ItemKind Selected => debugUnlimitedItems ? Order[_selected] : _inventory[_selected];
         public float CooldownRemaining(ItemKind kind) => Mathf.Max(0f, _cooldownRemaining[(int)kind]);
 
-        public void Purchase(ItemKind kind)
+        public bool Purchase(ItemKind kind)
         {
-            _heldItem = kind;
-            _hasHeldItem = true;
+            return Grant(kind);
+        }
+
+        public bool Grant(ItemKind kind)
+        {
+            if (!CanAddItem) return false;
+            if (debugUnlimitedItems) return true;
+
+            _inventory.Add(kind);
+            if (_inventory.Count == 1) _selected = 0;
+            return true;
+        }
+
+        public bool TryGetItem(int index, out ItemKind item)
+        {
+            if (debugUnlimitedItems)
+            {
+                if (index >= 0 && index < Order.Length)
+                {
+                    item = Order[index];
+                    return true;
+                }
+            }
+            else if (index >= 0 && index < _inventory.Count)
+            {
+                item = _inventory[index];
+                return true;
+            }
+
+            item = default;
+            return false;
         }
 
         public void SetShopping(bool shopping)
@@ -117,8 +151,17 @@ namespace RaceSabotage
             if (_input == null) return;
             if (_shopOpen || Time.frameCount <= _resumeInputAfterFrame) return;
 
-            if (debugUnlimitedItems && _input.InteractPressed) _selected = (_selected + 1) % Order.Length;
+            if (_motor != null && _motor.Mode == MotorMode.AutoRun && _input.SwitchItemPressed) SelectNextItem();
             if (_input.UseItemPressed) TryCast();
+        }
+
+        void SelectNextItem()
+        {
+            int count = ItemCount;
+            if (count < 2) return;
+
+            _selected = (_selected + 1) % count;
+            _banner?.Show(_slot, $"{Selected.ToString().ToUpperInvariant()} SELECTED");
         }
 
         bool TryCast()
@@ -140,7 +183,12 @@ namespace RaceSabotage
             if (!cast) return false;
 
             _cooldownRemaining[(int)kind] = CooldownFor(kind);
-            if (!debugUnlimitedItems) _hasHeldItem = false;
+            if (!debugUnlimitedItems)
+            {
+                _inventory.RemoveAt(_selected);
+                _selected = _inventory.Count > 0 ? _selected % _inventory.Count : 0;
+            }
+
             return true;
         }
 

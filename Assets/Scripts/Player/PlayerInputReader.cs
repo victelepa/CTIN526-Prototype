@@ -14,8 +14,8 @@ namespace RaceSabotage
     /// Day 1 input: two halves of one keyboard read off the Input System's
     /// low-level device API. Replace with an .inputactions asset + PlayerInput
     /// once gamepads are needed.
-    /// P1: A/D move, W jump, S item, LeftShift interact.
-    /// P2: Left/Right move, Up jump, Down item, RightShift interact.
+    /// P1: A/D move, W jump, S item, LeftShift interact. A cycles items while racing.
+    /// P2: Left/Right move, Up jump, Down item, RightShift interact. Left cycles items while racing.
     /// Values are polled on access rather than cached in Update, so no other
     /// component can read them a frame late depending on script execution order.
     /// </summary>
@@ -44,6 +44,7 @@ namespace RaceSabotage
         public bool JumpPressed => Resolve() && _jump.wasPressedThisFrame;
         public bool JumpHeld => Resolve() && _jump.isPressed;
         public bool UseItemPressed => Resolve() && _item.wasPressedThisFrame;
+        public bool SwitchItemPressed => Resolve() && _left.wasPressedThisFrame;
         public bool InteractPressed => Resolve() && _interact.wasPressedThisFrame;
         public bool ShopChoiceOnePressed => Resolve() && _left.wasPressedThisFrame;
         public bool ShopChoiceTwoPressed => Resolve() && _item.wasPressedThisFrame;
