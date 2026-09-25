@@ -138,7 +138,9 @@ namespace RaceSabotage.Whitebox
         static string ItemLabel(PlayerLoadout loadout, ItemKind item, bool selected)
         {
             float remaining = loadout.CooldownRemaining(item);
-            string state = remaining > 0f ? $"CD {remaining:0.0}s" : "READY";
+            string state = item == ItemKind.Laser && selected && loadout.IsAimingLaser
+                ? "AIMING"
+                : remaining > 0f ? $"CD {remaining:0.0}s" : "READY";
             string marker = selected ? "> " : string.Empty;
             return $"{marker}{item.ToString().ToUpperInvariant()}\n{state}";
         }

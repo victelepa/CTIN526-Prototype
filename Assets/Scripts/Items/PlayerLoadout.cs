@@ -10,7 +10,8 @@ namespace RaceSabotage
     /// </summary>
     public class PlayerLoadout : MonoBehaviour
     {
-        static readonly ItemKind[] Order = { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+        static readonly ItemKind[] Order =
+            { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser };
         const int MaxInventorySize = 3;
 
         [Header("Mode")]
@@ -46,7 +47,23 @@ namespace RaceSabotage
         [SerializeField, Range(0f, 1f)] float blindStrength = 0.9f;
         [SerializeField] Color blindColor = new Color(0.015f, 0.02f, 0.035f);
 
+        [Header("Laser")]
+        [SerializeField] float laserCooldown = 6f;
+        [SerializeField] float laserRange = 28f;
+        [Tooltip("Logical forward distance used to project the opponent into the shooter's split-screen lane.")]
+        [SerializeField] float laserTargetDistance = 14f;
+        [SerializeField] float laserSweepAngle = 24f;
+        [SerializeField] float laserSweepSeconds = 1.8f;
+        [SerializeField] float laserStunDuration = 2.5f;
+        [SerializeField] float laserAimWidth = 0.06f;
+        [SerializeField] float laserBeamWidth = 0.18f;
+        [SerializeField] float laserBeamDuration = 0.18f;
+        [SerializeField] float laserOriginHeight = 0.1f;
+        [SerializeField] float laserHitShakeTrauma = 0.8f;
+
         static readonly Color MineColor = new Color(0.64f, 0.27f, 0.86f);
+        static readonly Color LaserAimColor = new Color(0.25f, 0.95f, 1f, 0.38f);
+        static readonly Color LaserBeamColor = new Color(0.7f, 1f, 1f, 1f);
 
         PlayerSlot _slot;
         PlayerMotor _motor;
@@ -70,12 +87,19 @@ namespace RaceSabotage
         int _selected;
         bool _shopOpen;
         int _resumeInputAfterFrame = -1;
+        SpriteRenderer _laserLine;
+        SpriteRenderer _opponentLaserLine;
+        Vector2 _laserDirection = Vector2.right;
+        float _laserAimElapsed;
+        float _laserBeamRemaining;
+        bool _laserAiming;
 
         public bool HasItem => debugUnlimitedItems || _inventory.Count > 0;
         public bool CanAddItem => debugUnlimitedItems || _inventory.Count < MaxInventorySize;
         public int InventoryCapacity => debugUnlimitedItems ? Order.Length : MaxInventorySize;
         public int ItemCount => debugUnlimitedItems ? Order.Length : _inventory.Count;
         public int SelectedIndex => _selected;
+        public bool IsAimingLaser => _laserAiming;
         public ItemKind Selected => debugUnlimitedItems ? Order[_selected] : _inventory[_selected];
         public float CooldownRemaining(ItemKind kind) => Mathf.Max(0f, _cooldownRemaining[(int)kind]);
 
@@ -117,6 +141,7 @@ namespace RaceSabotage
         public void SetShopping(bool shopping)
         {
             _shopOpen = shopping;
+            if (shopping) CancelLaserAim();
             if (!shopping) _resumeInputAfterFrame = Time.frameCount + 1;
         }
 
@@ -143,6 +168,8 @@ namespace RaceSabotage
 
         void Update()
         {
+            UpdateLaserVisual();
+
             for (int i = 0; i < _cooldownRemaining.Length; i++)
             {
                 _cooldownRemaining[i] -= Time.deltaTime;
@@ -157,6 +184,8 @@ namespace RaceSabotage
 
         void SelectNextItem()
         {
+            if (_laserAiming) CancelLaserAim();
+
             int count = ItemCount;
             if (count < 2) return;
 
@@ -171,12 +200,19 @@ namespace RaceSabotage
             ItemKind kind = Selected;
             if (CooldownRemaining(kind) > 0f) return false;
 
+            if (kind == ItemKind.Laser && !_laserAiming)
+            {
+                BeginLaserAim();
+                return false;
+            }
+
             bool cast = kind switch
             {
                 ItemKind.Swap => CastSwap(),
                 ItemKind.Nitro => CastNitro(),
                 ItemKind.Mine => CastMine(),
                 ItemKind.Blind => CastBlind(),
+                ItemKind.Laser => FireLaser(),
                 _ => false
             };
 
@@ -198,6 +234,7 @@ namespace RaceSabotage
             ItemKind.Nitro => nitroCooldown,
             ItemKind.Mine => mineCooldown,
             ItemKind.Blind => blindCooldown,
+            ItemKind.Laser => laserCooldown,
             _ => 1f
         };
 
@@ -252,6 +289,138 @@ namespace RaceSabotage
             _banner?.Show(Opposite(_slot), "BLINDED!");
             return true;
         }
+
+        void BeginLaserAim()
+        {
+            _laserAiming = true;
+            _laserAimElapsed = 0f;
+            EnsureLaserLine();
+            UpdateLaserLine(Vector2.right, laserAimWidth, LaserAimColor);
+            _banner?.Show(_slot, "LASER AIMING");
+        }
+
+        void UpdateLaserVisual()
+        {
+            if (_laserAiming)
+            {
+                _laserAimElapsed += Time.deltaTime;
+                float cycle = Mathf.Max(0.1f, laserSweepSeconds);
+                float angle = Mathf.Sin(_laserAimElapsed * Mathf.PI * 2f / cycle) * laserSweepAngle;
+                _laserDirection = Quaternion.Euler(0f, 0f, angle) * Vector2.right;
+                UpdateLaserLine(_laserDirection, laserAimWidth, LaserAimColor);
+                return;
+            }
+
+            if (_laserBeamRemaining <= 0f) return;
+
+            _laserBeamRemaining -= Time.deltaTime;
+            if (_laserBeamRemaining <= 0f) DestroyLaserLine();
+        }
+
+        bool FireLaser()
+        {
+            _laserAiming = false;
+            _laserBeamRemaining = laserBeamDuration;
+            UpdateLaserLine(_laserDirection, laserBeamWidth, LaserBeamColor);
+
+            bool hit = LaserHitsOpponent(_laserDirection);
+            if (hit)
+            {
+                _opponentMotor.ApplyStun(laserStunDuration);
+                _opponentShake?.AddTrauma(laserHitShakeTrauma);
+                _opponentFlash?.Flash(LaserBeamColor, 0.12f);
+                _banner?.Show(_slot, "LASER HIT!");
+                _banner?.Show(Opposite(_slot), "STUNNED!");
+            }
+            else
+            {
+                _banner?.Show(_slot, "LASER MISSED");
+            }
+
+            return true;
+        }
+
+        bool LaserHitsOpponent(Vector2 direction)
+        {
+            if (_opponentMotor == null || _opponentTransform == null) return false;
+
+            Vector2 origin = LaserOrigin();
+            Vector2 opponentProxy = LaserTargetProxy(origin);
+
+            Collider2D opponentCollider = _opponentTransform.GetComponent<Collider2D>();
+            Vector3 targetSize = opponentCollider != null
+                ? opponentCollider.bounds.size
+                : new Vector3(1f, 1f, 1f);
+            targetSize.z = 1f;
+
+            var targetBounds = new Bounds(opponentProxy, targetSize);
+            var ray = new Ray(origin, direction);
+            return targetBounds.IntersectRay(ray, out float distance) && distance <= laserRange;
+        }
+
+        Vector2 LaserTargetProxy(Vector2 origin)
+        {
+            float raceLead = _opponentTransform.position.x - _motor.transform.position.x;
+            float projectedDistance = Mathf.Clamp(laserTargetDistance + raceLead, 4f, laserRange - 1f);
+            return new Vector2(
+                origin.x + projectedDistance,
+                _ownRestY + (_opponentTransform.position.y - _opponentRestY));
+        }
+
+        void UpdateLaserLine(Vector2 direction, float width, Color color)
+        {
+            EnsureLaserLine();
+            Vector2 origin = LaserOrigin();
+            PositionLaserLine(_laserLine, origin, direction, width, color);
+
+            Vector2 opponentProxy = LaserTargetProxy(origin);
+            Vector2 opponentTrackOrigin = origin + (Vector2)_opponentTransform.position - opponentProxy;
+            PositionLaserLine(_opponentLaserLine, opponentTrackOrigin, direction, width, color);
+        }
+
+        void PositionLaserLine(SpriteRenderer renderer, Vector2 origin, Vector2 direction, float width, Color color)
+        {
+            Transform line = renderer.transform;
+            line.position = origin + direction * (laserRange * 0.5f);
+            line.localScale = new Vector3(laserRange, width, 1f);
+            line.rotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
+            renderer.color = color;
+        }
+
+        Vector2 LaserOrigin() => (Vector2)_motor.transform.position + Vector2.up * laserOriginHeight;
+
+        void EnsureLaserLine()
+        {
+            if (_laserLine == null)
+            {
+                _laserLine = PrimitiveSprite.CreateBox($"Laser_{_slot}", null, Vector2.zero, Vector2.one,
+                    LaserAimColor, PrimitiveSprite.ColliderKind.None, 40);
+            }
+
+            if (_opponentLaserLine == null)
+            {
+                _opponentLaserLine = PrimitiveSprite.CreateBox($"OpponentLaser_{_slot}", null,
+                    Vector2.zero, Vector2.one, LaserAimColor, PrimitiveSprite.ColliderKind.None, 40);
+            }
+        }
+
+        void CancelLaserAim()
+        {
+            if (!_laserAiming) return;
+            _laserAiming = false;
+            DestroyLaserLine();
+        }
+
+        void DestroyLaserLine()
+        {
+            if (_laserLine != null) Destroy(_laserLine.gameObject);
+            if (_opponentLaserLine != null) Destroy(_opponentLaserLine.gameObject);
+            _laserLine = null;
+            _opponentLaserLine = null;
+            _laserBeamRemaining = 0f;
+        }
+
+        void OnDisable() => DestroyLaserLine();
 
         static PlayerSlot Opposite(PlayerSlot slot) => slot == PlayerSlot.One ? PlayerSlot.Two : PlayerSlot.One;
     }

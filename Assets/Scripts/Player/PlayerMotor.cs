@@ -64,6 +64,7 @@ namespace RaceSabotage
         float _coyoteLeft;
         float _jumpBufferLeft;
         float _immunityLeft;
+        float _stunRemaining;
         bool _grounded;
         bool _jumpHeld;
         bool _jumpCutArmed;
@@ -78,6 +79,7 @@ namespace RaceSabotage
         public bool Frozen { get; set; }
 
         public bool IsGrounded => _grounded;
+        public bool IsStunned => _stunRemaining > 0f;
         public float SpeedMultiplier => Mathf.Max(_speed.Value, minSpeedMultiplier);
         public Vector2 Velocity => _velocity;
 
@@ -104,6 +106,7 @@ namespace RaceSabotage
             // Fairness window, not a gameplay slow-down, so it runs on real time
             // regardless of any slow-motion effect currently on this player.
             _immunityLeft -= Time.deltaTime;
+            _stunRemaining -= Time.deltaTime;
 
             if (_input == null) return;
             _moveInput = _input.MoveX;
@@ -113,7 +116,7 @@ namespace RaceSabotage
 
         void FixedUpdate()
         {
-            if (Frozen)
+            if (Frozen || IsStunned)
             {
                 _velocity = Vector2.zero;
                 _body.linearVelocity = Vector2.zero;
@@ -209,6 +212,9 @@ namespace RaceSabotage
         /// that PlayerHitFeedback wires up for getting hit.
         /// </summary>
         public void ApplyBoost(float multiplier, float duration) => _speed.Add(multiplier, duration);
+
+        /// <summary>Stops movement temporarily without overriding shop or finish-line freezes.</summary>
+        public void ApplyStun(float duration) => _stunRemaining = Mathf.Max(_stunRemaining, duration);
 
         /// <summary>Brief grace window after a Swap lands, see <see cref="IsImmune"/>.</summary>
         public void GrantImmunity(float seconds) => _immunityLeft = Mathf.Max(_immunityLeft, seconds);

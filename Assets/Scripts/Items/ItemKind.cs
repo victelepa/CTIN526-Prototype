@@ -9,6 +9,7 @@ namespace RaceSabotage
         Swap,
         Nitro,
         Mine,
-        Blind
+        Blind,
+        Laser
     }
 }

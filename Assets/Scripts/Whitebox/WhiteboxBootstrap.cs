@@ -203,8 +203,9 @@ namespace RaceSabotage.Whitebox
             {
                 bool finalShop = shopIndex == count - 1;
                 var pool = finalShop
-                    ? new List<ItemKind> { ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind }
-                    : new List<ItemKind> { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+                    ? new List<ItemKind> { ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser }
+                    : new List<ItemKind>
+                        { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser };
 
                 for (int i = pool.Count - 1; i > 0; i--)
                 {
@@ -218,7 +219,8 @@ namespace RaceSabotage.Whitebox
 
         void BuildRacingItemOffers()
         {
-            var pool = new List<ItemKind> { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind };
+            var pool = new List<ItemKind>
+                { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser };
             for (int i = pool.Count - 1; i > 0; i--)
             {
                 int swapIndex = Random.Range(0, i + 1);
