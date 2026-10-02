@@ -45,3 +45,7 @@ Desktop.ini
 /Assets/StreamingAssets/aa.meta
 /Assets/StreamingAssets/aa/
 
+# Published Unity WebGL player. Keep nested Unity-generated Build folders ignored,
+# but track this root output because GitHub Pages deploys it as the static site.
+!/Build/
+!/Build/**
