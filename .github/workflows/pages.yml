@@ -1,5 +1,7 @@
 name: Deploy WebGL to GitHub Pages
 
+# Publishing source: GitHub Actions
+
 on:
   push:
     branches: [main]
