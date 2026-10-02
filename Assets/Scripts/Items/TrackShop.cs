@@ -149,6 +149,7 @@ namespace RaceSabotage
             ItemKind.Blind => 2,
             ItemKind.Swap => 3,
             ItemKind.Laser => 3,
+            ItemKind.Smash => 2,
             _ => 1
         };
 

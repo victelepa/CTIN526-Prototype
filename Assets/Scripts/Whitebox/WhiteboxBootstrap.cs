@@ -106,9 +106,19 @@ namespace RaceSabotage.Whitebox
         readonly List<CoinPickup> _coins = new List<CoinPickup>();
         Vector2 _oneRoomSpawn;
         Vector2 _twoRoomSpawn;
+        bool _started;
 
         void Awake()
         {
+            MainMenu menu = gameObject.AddComponent<MainMenu>();
+            menu.Configure(BeginGame);
+        }
+
+        public void BeginGame()
+        {
+            if (_started) return;
+            _started = true;
+
             _hud = showDebugHud ? gameObject.AddComponent<WhiteboxHud>() : null;
             BuildShopOffers();
             BuildRacingItemOffers();
@@ -158,10 +168,7 @@ namespace RaceSabotage.Whitebox
                 _hud.Register("P2", _two.Motor, _two.Loadout, _two.Wallet);
                 _hud.Configure(startX, trackLength, _one.Camera);
             }
-        }
 
-        void Start()
-        {
             ClampCamera(_one);
             ClampCamera(_two);
         }
@@ -203,9 +210,10 @@ namespace RaceSabotage.Whitebox
             {
                 bool finalShop = shopIndex == count - 1;
                 var pool = finalShop
-                    ? new List<ItemKind> { ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser }
+                    ? new List<ItemKind>
+                        { ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser, ItemKind.Smash }
                     : new List<ItemKind>
-                        { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser };
+                        { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser, ItemKind.Smash };
 
                 for (int i = pool.Count - 1; i > 0; i--)
                 {
@@ -220,7 +228,7 @@ namespace RaceSabotage.Whitebox
         void BuildRacingItemOffers()
         {
             var pool = new List<ItemKind>
-                { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser };
+                { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser, ItemKind.Smash };
             for (int i = pool.Count - 1; i > 0; i--)
             {
                 int swapIndex = Random.Range(0, i + 1);

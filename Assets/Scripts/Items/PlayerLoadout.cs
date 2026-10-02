@@ -11,7 +11,7 @@ namespace RaceSabotage
     public class PlayerLoadout : MonoBehaviour
     {
         static readonly ItemKind[] Order =
-            { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser };
+            { ItemKind.Swap, ItemKind.Nitro, ItemKind.Mine, ItemKind.Blind, ItemKind.Laser, ItemKind.Smash };
         const int MaxInventorySize = 3;
 
         [Header("Mode")]
@@ -23,6 +23,7 @@ namespace RaceSabotage
         [SerializeField] float nitroCooldown = 4f;
         [SerializeField] float mineCooldown = 5f;
         [SerializeField] float blindCooldown = 7f;
+        [SerializeField] float smashCooldown = 7f;
 
         [Header("Swap")]
         [Tooltip("Landing grace so a swap can't drop you straight into an obstacle's penalty on arrival.")]
@@ -53,13 +54,24 @@ namespace RaceSabotage
         [Tooltip("Logical forward distance used to project the opponent into the shooter's split-screen lane.")]
         [SerializeField] float laserTargetDistance = 14f;
         [SerializeField] float laserSweepAngle = 24f;
-        [SerializeField] float laserSweepSeconds = 1.8f;
+        [Tooltip("Seconds for one complete laser sweep cycle. Higher values aim more slowly.")]
+        [SerializeField] float laserSweepSeconds = 2.6f;
         [SerializeField] float laserStunDuration = 2.5f;
         [SerializeField] float laserAimWidth = 0.06f;
         [SerializeField] float laserBeamWidth = 0.18f;
         [SerializeField] float laserBeamDuration = 0.18f;
         [SerializeField] float laserOriginHeight = 0.1f;
         [SerializeField] float laserHitShakeTrauma = 0.8f;
+
+        [Header("Smash")]
+        [SerializeField] float smashWarningSeconds = 0.7f;
+        [SerializeField] float smashStrikeInterval = 0.28f;
+        [SerializeField] float smashActiveSeconds = 0.28f;
+        [SerializeField] int smashStrikeCount = 3;
+        [SerializeField] Vector2 smashHazardSize = new Vector2(1.15f, 1.35f);
+        [SerializeField, Range(0f, 1f)] float smashSpeedMultiplier = 0.45f;
+        [SerializeField] float smashSlowDuration = 1.3f;
+        [SerializeField] float smashFinishMargin = 5f;
 
         static readonly Color MineColor = new Color(0.64f, 0.27f, 0.86f);
         static readonly Color LaserAimColor = new Color(0.25f, 0.95f, 1f, 0.38f);
@@ -213,6 +225,7 @@ namespace RaceSabotage
                 ItemKind.Mine => CastMine(),
                 ItemKind.Blind => CastBlind(),
                 ItemKind.Laser => FireLaser(),
+                ItemKind.Smash => CastSmash(),
                 _ => false
             };
 
@@ -235,6 +248,7 @@ namespace RaceSabotage
             ItemKind.Mine => mineCooldown,
             ItemKind.Blind => blindCooldown,
             ItemKind.Laser => laserCooldown,
+            ItemKind.Smash => smashCooldown,
             _ => 1f
         };
 
@@ -287,6 +301,36 @@ namespace RaceSabotage
             _opponentFlash?.Blind(blindColor, blindStrength, blindDuration);
             _banner?.Show(_slot, "BLIND SENT");
             _banner?.Show(Opposite(_slot), "BLINDED!");
+            return true;
+        }
+
+        bool CastSmash()
+        {
+            if (_motor == null || _opponentMotor == null || _opponentTransform == null) return false;
+            if (_motor.Mode != MotorMode.AutoRun || _opponentMotor.Mode != MotorMode.AutoRun) return false;
+            if (_opponentMotor.Frozen) return false;
+
+            float targetSpeed = Mathf.Max(3f, Mathf.Abs(_opponentMotor.Velocity.x));
+            float firstStrikeX = _opponentTransform.position.x + targetSpeed * smashWarningSeconds;
+            float strikeSpacing = targetSpeed * smashStrikeInterval;
+            float lastStrikeX = firstStrikeX + strikeSpacing * (Mathf.Max(1, smashStrikeCount) - 1);
+            if (lastStrikeX >= _trackFinishX - smashFinishMargin) return false;
+
+            _motor.RequestJump();
+
+            var sequenceObject = new GameObject($"Smash_{_slot}_{Time.frameCount}");
+            sequenceObject.transform.SetParent(_opponentTrackRoot, false);
+            SmashSequence sequence = sequenceObject.AddComponent<SmashSequence>();
+            sequence.Configure(
+                _slot, _opponentMotor, Opposite(_slot), _banner,
+                _opponentTrackBaselineY, firstStrikeX, strikeSpacing,
+                Mathf.Max(1, smashStrikeCount), smashWarningSeconds,
+                smashStrikeInterval, smashActiveSeconds, smashHazardSize,
+                smashSpeedMultiplier, smashSlowDuration);
+
+            _banner?.Show(_slot, "SMASH!");
+            _banner?.Show(Opposite(_slot),
+                _slot == PlayerSlot.One ? "ROCKFALL INCOMING!" : "QUAKE INCOMING!");
             return true;
         }
 

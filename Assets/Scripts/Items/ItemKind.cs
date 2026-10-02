@@ -10,6 +10,7 @@ namespace RaceSabotage
         Nitro,
         Mine,
         Blind,
-        Laser
+        Laser,
+        Smash
     }
 }

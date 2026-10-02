@@ -10,6 +10,10 @@ namespace RaceSabotage.Whitebox
     /// </summary>
     public class WhiteboxHud : MonoBehaviour
     {
+        const float ReferenceWidth = 1920f;
+        const float ReferenceHeight = 1080f;
+        const float MinimumUiScale = 0.45f;
+
         class Entry
         {
             public string Label;
@@ -75,20 +79,32 @@ namespace RaceSabotage.Whitebox
                 normal = { textColor = Color.white }
             };
 
-            float viewportHeight = Screen.height * 0.5f;
+            // IMGUI uses physical pixels by default. Draw against a virtual 1080p
+            // canvas so small Game views shrink the whole inventory panel together,
+            // while larger displays keep the established readable size.
+            float uiScale = Mathf.Clamp(
+                Mathf.Min(Screen.width / ReferenceWidth, Screen.height / ReferenceHeight),
+                MinimumUiScale, 1f);
+            Matrix4x4 previousMatrix = GUI.matrix;
+            GUI.matrix = Matrix4x4.Scale(new Vector3(uiScale, uiScale, 1f));
+
+            float canvasWidth = Screen.width / uiScale;
+            float viewportHeight = Screen.height / uiScale * 0.5f;
             for (int i = 0; i < _entries.Count; i++)
             {
                 Entry entry = _entries[i];
                 if (entry.Motor == null) continue;
-                DrawPlayerPanel(entry, i, viewportHeight);
+                DrawPlayerPanel(entry, i, viewportHeight, canvasWidth);
             }
+
+            GUI.matrix = previousMatrix;
         }
 
-        void DrawPlayerPanel(Entry entry, int index, float viewportHeight)
+        void DrawPlayerPanel(Entry entry, int index, float viewportHeight, float canvasWidth)
         {
             const float margin = 12f;
             const float panelHeight = 104f;
-            float panelWidth = Mathf.Min(560f, Screen.width - margin * 2f);
+            float panelWidth = Mathf.Min(560f, canvasWidth - margin * 2f);
             float viewportTop = index * viewportHeight;
             float panelY = viewportTop + viewportHeight - panelHeight - 8f;
             var panel = new Rect(margin, panelY, panelWidth, panelHeight);
@@ -131,7 +147,7 @@ namespace RaceSabotage.Whitebox
                 float width = height * _referenceCamera.aspect;
                 string viewport = $"viewport {width:0.0} x {height:0.0}  elapsed {Time.time - _raceStartTime:0.00}s";
                 Vector2 size = _style.CalcSize(new GUIContent(viewport));
-                GUI.Label(new Rect(Screen.width - size.x - 12f, panel.y + 4f, size.x, 20f), viewport, _style);
+                GUI.Label(new Rect(canvasWidth - size.x - 12f, panel.y + 4f, size.x, 20f), viewport, _style);
             }
         }
 
